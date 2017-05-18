@@ -1,0 +1,386 @@
+library(data.table)
+library(tidyverse)
+library(lubridate)
+library(scales)
+library(corrplot)
+library(DT)
+library(VIM)
+library(mice)
+
+
+
+train_raw <- fread('train.csv', stringsAsFactors=TRUE)
+test_raw <- fread('test.csv', stringsAsFactors=TRUE)
+
+dtrain <- train_raw
+
+
+# BUILDING DESCRIPTION
+full_sq: total area in square meters, including loggias, balconies and other non-residential areas
+life_sq: living area in square meters, excluding loggias, balconies and other non-residential areas
+floor: for apartments, floor of the building
+max_floor: number of floors in the building
+material: wall material
+build_year: year built
+num_room: number of living rooms
+kitch_sq: kitchen area
+state: apartment condition
+
+# OWNER CHARACTERISTICS
+product_type: owner-occupier purchase or investment
+
+
+
+# state should be between 1-4
+dtrain$state[dtrain$state == 33] <- which.max(table(dtrain$state))
+
+
+#full_sq cleaning
+dtrain <- dtrain %>% mutate(full_sq = replace(full_sq, full_sq == 0, NA))
+dtrain <- dtrain %>% mutate(full_sq = replace(full_sq, full_sq == 1, NA))
+dtrain <- dtrain %>% mutate(full_sq = replace(full_sq, full_sq == 5326, NA))
+# full vs life sq
+sum(dtrain$life_sq > dtrain$full_sq, na.rm=TRUE)
+dtrain <- dtrain %>% mutate(life_sq = replace(life_sq, life_sq == 7478, NA))
+
+dtrain[dtrain$life_sq > dtrain$full_sq,]$life_sq # this provides a list with NAs, so I cannot do math on the vector
+dtrain[dtrain$life_sq > dtrain$full_sq,]  <-  dtrain[dtrain$life_sq > dtrain$full_sq,]$life_sq/10
+
+#kitch vs full
+dtrain[dtrain$kitch_sq > dtrain$full_sq,]$life_sq # same as above
+dtrain[dtrain$kitch_sq > dtrain$full_sq,]  <-  dtrain[dtrain$kitch_sq > dtrain$kitch_sq,]$life_sq/10
+
+# build year
+dtrain$build_year[dtrain$build_year == 20052009] <- 2007
+dtrain$build_year[dtrain$build_year == 4965] <- 1965
+dtrain$build_year[dtrain$build_year < 1800] <- NA
+
+# num of rooms 
+dtrain$num_room[dtrain$num_room > 10] <- NA
+
+internal_chars <- c('full_sq', 'life_sq', 'floor', 'max_floor', 'build_year', 'num_room', 
+                    'kitch_sq', 'state', 'material','price_doc')
+
+corrplot(cor(dtrain[,internal_chars], use="complete.obs"),method = 'number')
+
+# largest corr for price doc are full_sq and num_room
+
+
+# COUNT / SQUARE METERS OF OFFICE
+office_raion    Number of malls and shopping centres in district
+## this likely has the wrong definition
+office_count._500   The number of office space in 500 meters zone
+office_sqm_500  The square of office space in 500 meters zone
+office_count_1000   The number of office space in 1000 meters zone
+office_sqm_1000 The square of office space in 1000 meters zone
+office_count_1500   The number of office space in 1500 meters zone
+office_sqm_1500 The square of office space in 1500 meters zone
+office_count_2000   The number of office space in 2000 meters zone
+office_sqm_2000 The square of office space in 2000 meters zone
+office_count_3000   The number of office space in 3000 meters zone
+office_sqm_3000 The square of office space in 3000 meters zone
+office_count_5000   The number of office space in 5000 meters zone
+office_sqm_5000 The square of office space in 5000 meters zone
+
+# correlation: decent correlation between, corr increases as sqm and count increases 
+# there is a strong multicollinearity between all the variables
+
+office_vars <- c(
+                #'office_count_500', 'office_sqm_500', 'office_count_1000', 'office_sqm_1000', 
+               #'office_count_1500', 'office_sqm_1500', 'office_raion',
+               'office_count_2000', 'office_sqm_2000', 'office_count_3000', 'office_sqm_3000', 
+               'office_count_5000', 'office_sqm_5000', 
+               'price_doc')
+
+corrplot(cor(dtrain[, office_vars], use='complete.obs'), method = 'number')
+office <- dtrain %>% select_('office_count_500', 'office_sqm_500', 'office_count_1000', 'office_sqm_1000', 
+  'office_count_1500', 'office_sqm_1500', 'office_raion',
+  'office_count_2000', 'office_sqm_2000', 'office_count_3000', 'office_sqm_3000', 
+  'office_count_5000', 'office_sqm_5000')
+
+aggr(office, sortVars = TRUE, numbers=TRUE, cex.axis=.7, gap=1)
+# no missing varaibles
+
+# office_count_500
+table(dtrain$office_count_500)
+# most variables hover around 0
+
+# office_sqm_500
+boxplot(dtrain$office_sqm_500)
+
+# office_count_5000
+table(dtrain$office_count_5000)
+# there are a lot of variables in 774, need to ask group why that is
+
+# office_sqm_5000
+boxplot(dtrain$office_sqm_5000)
+
+
+
+#  AVERAGE BILL OF CAFES OR RESTAURANTS 
+#  WITHIN 1,500 METERS / .932 miles(**every 500 russian ruble is $8.76 in usd**)
+cafe_avg_price_1500 Cafes and restaurant average bill in 1500 meters zone
+cafe_sum_1500_min_price_avg Cafes and restaurant min average bill in 1500 meters zone
+cafe_sum_1500_max_price_avg Cafes and restaurant max average bill in 1500 meters zone
+cafe_count_1500_na_price    Cafes and restaurant bill N/A in 1500 meters zone
+cafe_count_1500_price_500   Cafes and restaurant bill, average under 500 in 1500 meters zone
+cafe_count_1500_price_1000  Cafes and restaurant bill, average  500-1000 in 1500 meters zone
+cafe_count_1500_price_1500  Cafes and restaurant bill, average  1000-1500 in 1500 meters zone
+cafe_count_1500_price_2500  Cafes and restaurant bill, average  1500-2500 in 1500 meters zone
+cafe_count_1500_price_4000  Cafes and restaurant bill, average  2500-4000 in 1500 meters zone
+cafe_count_1500_price_high  Cafes and restaurant bill, average  over 4000 in 1500 meters zone
+
+
+cafe_vars <- c(
+  'cafe_avg_price_1500', "cafe_sum_1500_min_price_avg", 'cafe_sum_1500_max_price_avg',
+  'cafe_count_1500_na_price', 'cafe_count_1500_price_500', 'cafe_count_1500_price_1000',
+  'cafe_count_1500_price_1500', 'cafe_count_1500_price_2500', 'cafe_count_1500_price_4000',
+  'cafe_count_1500_price_high', 'price_doc'
+)
+corrplot(cor(dtrain[,cafe_vars], use = 'complete.obs'),method = 'number')
+# nothing above .12 in correlation to price doc
+# there are two sections of multicollinarity, maybe we could grab two variables from the two diff sections
+cafe <- dtrain%>% select_('cafe_avg_price_1500', "cafe_sum_1500_min_price_avg", 'cafe_sum_1500_max_price_avg',
+                          'cafe_count_1500_na_price', 'cafe_count_1500_price_500', 'cafe_count_1500_price_1000',
+                          'cafe_count_1500_price_1500', 'cafe_count_1500_price_2500', 'cafe_count_1500_price_4000',
+                          'cafe_count_1500_price_high')
+aggr(cafe, sortVars = TRUE, numbers=TRUE, cex.axis=.7, gap=1)
+
+
+# cafe prices
+boxplot(dtrain$cafe_count_1500_price_high)
+boxplot(dtrain$cafe_avg_price_1500)
+boxplot(dtrain$cafe_avg_price_1500) # there are two ouliers here we should look at
+boxplot(dtrain$cafe_count_1500_price_4000)  # this also has an interesting distribution
+
+
+
+## RELIGIOUS INSTITUTIONS
+# COUNT OF BIG CHURCHES
+big_church_count_500    The number of big churchs in 500 meters zone
+big_church_count_1000   The number of big churchs in 1000 meters zone
+big_church_count_1500   The number of big churchs in 1500 meters zone
+big_church_count_2000   The number of big churchs in 2000 meters zone
+big_church_count_3000   The number of big churchs in 3000 meters zone
+big_church_count_5000   The number of big churchs in 5000 meters zone
+
+
+church_vars <- c(
+  'big_church_count_500', "big_church_count_1000", 'big_church_count_1500',
+  'big_church_count_2000', 'big_church_count_3000', 'big_church_count_5000',
+  'price_doc'
+)
+corrplot(cor(dtrain[,church_vars], use = 'complete.obs'),method = 'number')
+# nothing is overly correlated against price, everything is very correlated against each other
+# .2 in big_church_count_5000 would be relevant because everything is super corrleated within
+# the matrix 
+church <- dtrain %>% select_('big_church_count_500', "big_church_count_1000", 'big_church_count_1500',
+                             'big_church_count_2000', 'big_church_count_3000', 'big_church_count_5000')
+aggr(church, sortVars = TRUE, numbers=TRUE, cex.axis=.7, gap=1)
+
+
+boxplot(dtrain$big_church_count_5000)
+hist(dtrain$big_church_count_5000)
+
+
+# COUNT OF SPORTS FACILITIES
+sport_count_500 The number of sport facilities in 500 meters zone
+sport_count_1000    The number of sport facilities in 1000 meters zone
+sport_count_1500    The number of sport facilities in 1500 meters zone
+sport_count_2000    The number of sport facilities in 2000 meters zone
+sport_count_3000    The number of sport facilities in 3000 meters zone
+sport_count_5000    The number of sport facilities in 5000 meters zone
+
+
+sports_vars <- c(
+  'sport_count_500', 'sport_count_1000', 'sport_count_1500', "sport_count_2000",
+  'sport_count_3000', 'sport_count_5000', 'price_doc'
+)
+sports <- dtrain %>% select_('sport_count_500', 'sport_count_1000', 'sport_count_1500', "sport_count_2000",
+                            'sport_count_3000', 'sport_count_5000')
+corrplot(cor(dtrain[,sports_vars], use = 'complete.obs'),method = 'number')
+# actually fairly correlated, some useful data could be very relevant 
+
+aggr(sports, sortVars = TRUE, numbers=TRUE, cex.axis=.7, gap=1) # no missingness
+
+boxplot(dtrain$sport_count_5000)
+# box plots show no main sign of outlier
+hist(dtrain$sport_count_5000)
+
+market_count_500	The number of markets in 500 meters zone
+market_count_1000	The number of markets in 1000 meters zone
+market_count_1500	The number of markets in 1500 meters zone
+market_count_2000	The number of markets in 2000 meters zone
+market_count_3000	The number of markets in 3000 meters zone
+market_count_5000	The number of markets in 5000 meters zone
+
+
+market_var <- c(
+  'market_count_500', 'market_count_1000', 'market_count_1500', 'market_count_2000',
+  'market_count_3000', 'market_count_5000', 'price_doc'
+)
+corrplot(cor(dtrain[,market_var], use = 'complete.obs'),method = 'number')
+# highest correlated value is .19 at market_count_5000
+market <- dtrain %>% select_('market_count_500', 'market_count_1000', 'market_count_1500', 'market_count_2000',
+                             'market_count_3000', 'market_count_5000')
+aggr(market, sortVars = TRUE, numbers=TRUE, cex.axis=.7, gap=1)
+boxplot(dtrain$market_count_5000)
+hist(dtrain$market_count_5000) # data points are packed, no outliers
+
+# DISTANCE TO POPULAR LOCATIONS??	
+mkad_km	Distance to MKAD (Moscow Circle Auto Road)
+ttk_km	Distance to the TTC (Third Transport Ring)
+sadovoe_km	Distance to the Garden Ring
+bulvar_ring_km	The distance to the Boulevard Ring
+kremlin_km	Distance to the city center (Kremlin)
+
+pop_loc_vars <- c(
+  'mkad_km', 'ttk_km', 'sadovoe_km', 'bulvar_ring_km', 'kremlin_km', 'price_doc'
+)
+pop <- dtrain %>% select_('mkad_km', 'ttk_km', 'sadovoe_km', 'bulvar_ring_km', 'kremlin_km')
+corrplot(cor(dtrain[,pop_loc_vars], use = 'complete.obs'),method = 'number')
+# negative correlation of distance to variable
+aggr(pop, sortVars = TRUE, numbers=TRUE, cex.axis=.7, gap=1) # nothing missing, very confusing for me
+boxplot(dtrain$mkad_km)
+hist(dtrain$mkad_km) # possible outliers 
+boxplot(dtrain$ttk_km)
+hist(dtrain$ttk_km) #pssoible outliers
+boxplot(dtrain$sadovoe_km)
+hist(dtrain$sadovoe_km) # possible outliers
+boxplot(dtrain$bulvar_ring_km)
+hist(dtrain$bulvar_ring_km) # shift in mean toward the right, but still few data points far right
+boxplot(dtrain$kremlin_km)
+hist(dtrain$kremlin_km) #this contains the farthest rightward mean
+
+# all the plots basicallly look the same # no crazy crazy outliers, makes me think all variavles are within the correct city
+# ntohing is missing but all plots seem to be within the same city, not sure how this works
+
+
+# TRAIN DETAILS	
+# DISTANCE / TIME TO METRO (WALKING)	
+metro_min_walk	  Time to metro by foot
+boxplot(dtrain$metro_min_walk)
+summary(dtrain$metro_min_walk) # median is 20, mean is 42, max is 711 so there is some huge outliers
+metro_km_walk	    Distance to the metro, km
+boxplot(dtrain$metro_km_walk)
+summary(dtrain$metro_km_walk) # median is 1.7, mean is 3.77 with a max at 59
+walk_vars <-c('metro_km_walk', 'metro_min_walk', 'metro_min_avto', 'metro_km_avto',
+                           'price_doc')
+corrplot(cor(dtrain[,walk_vars], use = 'complete.obs'),method = 'number')
+# negative correlation of -.18 for each variable
+
+# DISTANCE / TIME TO METRO (DRIVING)	
+metro_min_avto	Time to subway by car, min.
+summary(dtrain$metro_min_avto) #median is 2.8, mean is 4.9, max is 61
+boxplot(dtrain$metro_min_avto) # the few by 60 might be outliers that could be taken out
+metro_km_avto	Distance to subway by car, km
+summary(dtrain$metro_km_avto) #meadian = 1.48, mean = 3.7, max = 74.9
+boxplot(dtrain$metro_km_avto) # outoliers are a little larger than the min avto data
+
+
+# DISTANCE / ID NEAREST MAJOR ROAD	
+big_road1_km	Distance to Nearest major road
+ID_big_road1	Nearest big road id
+big_road1_1line	First line to the road (100 m for highwys, 250 m to MKAD)
+big_road2_km	The distance to next distant major road
+ID_big_road2	2nd nearest big road id
+
+
+road_vars <- c('big_road1_km', 'ID_big_road1', 'big_road2_km',
+               'ID_big_road2', 'price_doc')
+
+corrplot(cor(dtrain[,road_vars], use = 'complete.obs'),method = 'number')
+# nothing is highly correlated, not even amongst each other
+road <- dtrain %>% select_('big_road1_km', 'ID_big_road1', 'big_road2_km',
+                           'ID_big_road2')
+
+
+aggr(road)
+# no missingness
+
+
+attach(dtrain)
+# DISTANCE / TIME TO BUS (DRIVING)	
+## BUS DETAILS	
+bus_terminal_avto_km	Distance to bus terminal (avto)
+summary(bus_terminal_avto_km)
+hist(bus_terminal_avto_km) #perhapes some outlier here
+
+ID_bus_terminal	Nearest bus terminal id
+summary(ID_bus_terminal)
+
+metro_: subway # not a variable
+avto: distances by car	 # not a variable
+
+
+mkad_km: Moscow Circle Auto Road	
+summary(mkad_km)
+hist(mkad_km) # perhapes there is an outlier 
+
+ttk_km: Third Transport Ring
+summary(ttk_km)
+hist(ttk_km) # perhapes there is an outlier
+
+sadovoe_km: Garden Ring	
+summary(sadovoe_km)
+hist(sadovoe_km)
+
+bulvar_ring_km: Boulevard Ring	
+summary(bulvar_ring_km)
+
+kremlin_: City center	
+summary(kremlin_km)
+
+zd_vokzaly_avto_km: Train station
+summary(zd_vokzaly_avto_km)
+
+# so with these variables, there is usuallly a clustering around 10-20 with a median
+# always lower than th mean
+# Maybe the outliers have something in common, will check out more
+
+distance <- dtrain %>% select_('bus_terminal_avto_km', 'ID_bus_terminal', 'mkad_km', 'ttk_km', 'sadovoe_km',
+                               'bulvar_ring_km', 'kremlin_km','zd_vokzaly_avto_km')
+
+# so all of the large max variables are the same observations throughout the sheet
+# is this because there is another city that they are taking into consideration? if so..
+# delete the large observations 
+
+
+# DISTANCE TO RELIGIOUS INSTITUTIONS	
+big_church_km	Distance to large church
+church_synagogue_km	Distance to Christian chirches and Synagogues
+mosque_km	Distance to mosques
+
+# DISTANCE TO ENTERTAINMENT	
+theater_km	Distance to theater
+museum_km	Distance to museums
+culture_objects_top_25	Presence of the key objects of cultural heritage (significant objects for the level of the RF constituent entities, city)
+culture_objects_top_25_raion	Number of  objects of cultural heritage
+exhibition_km	Distance to exhibition
+catering_km	Distance to catering
+
+# AREA (IN SQUARE MILES) / POPULATION	
+area_m	Area mun. area, sq.m.
+raion_popul	Number of municipality population. district
+
+
+
+
+# POPULATION SUB-GROUPS: 0-6, 7-14, 0-17, 16-19, 0-13	
+0_6_all	Population aged 0-6
+0_6_male	Male population aged 0-7
+## LIKELY MALE 0-6
+0_6_female	Female population aged 0-8
+## LIKELY FEMALE 0-6
+7_14_all	Population aged  7-14
+7_14_male	Male population aged 7-14
+7_14_female	Female population aged 7-14
+0_17_all	Population aged 0-17
+0_17_male	Male population aged 0-17
+0_17_female	Female population aged 0-17
+16_29_all	Population aged 16-19
+16_29_male	Male population aged 16-19
+16_29_female	Female population aged 16-19
+0_13_all	Population aged 0-13
+0_13_male	Male population aged 0-13
+0_13_female	Female population aged 0-13
