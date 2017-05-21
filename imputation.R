@@ -1,7 +1,7 @@
 library(dplyr)
 library(data.table)
 setwd("/Users/jasonchiu0803/Desktop/data_bootcamp/sberbank_project")
-train <- fread("train.csv",stringsAsFactors = TRUE)
+train <- fread("./train.csv",stringsAsFactors = TRUE)
 
 # cleaning data
 # train year
@@ -19,7 +19,7 @@ summary(train$year_cleaned)
 train[train$year_cleaned == 4965, "year_cleaned"] <- 1965
 hist(train$year_cleaned)
 
-#converting all year between 0 - 1600 to NAs
+# converting all year between 0 - 1600 to NAs
 train <- train %>% mutate(year_cleaned = replace(year_cleaned, year_cleaned<1600, NA))
 summary(train$year_cleaned)
 hist(train$year_cleaned)
@@ -105,7 +105,7 @@ data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
   labs(x='', y='% missing', title='Percent missing data by feature') +
   theme(axis.text.x=element_text(angle=90, hjust=1))
 
-first_set <- train %>% select(full_sq,
+first_set <- train %>% dplyr::select(full_sq,
                               life_sq,
                               floor,
                               max_floor,
@@ -116,10 +116,10 @@ first_set <- train %>% select(full_sq,
                               state_cleaned,
                               sub_area,
                               price_doc) %>%
-  mutate(log_price = log(price_doc),
+  dplyr::mutate(log_price = log(price_doc),
          state_cleaned = factor(state_cleaned, levels = c(1,2,3,4), ordered = TRUE),
          material = factor(material,levels = c(1,2,3,4,5,6))) %>%
-  select(-price_doc)
+  dplyr::select(-price_doc)
 
 #linear regression
 #install.packages("VIF")
@@ -165,7 +165,6 @@ length(train)/nrow(x)
 length(y.test)/nrow(x)
 
 library(caret)
-library(plyr)
 dim(x)
 #dim(na.omit(x))
 #plyr::count(is.na(x))
@@ -193,19 +192,34 @@ log(bestlambda.lasso)
 
 lasso.models.train = glmnet(x[train, ], y[train], alpha = 1, lambda = bestlambda.lasso)
 lasso.models.train$beta
+predict(lasso.models.train,)
+predict(lasso.models.train,  
 
 lasso.models.caret = glmnet(x[train, ], y[train], alpha = 1, lambda = lasso.caret$bestTune)
 lasso.models.caret$beta
 
+# random Forest
+library(randomForest)
+total <- data.frame(x,y)
+summary(total)
+log_random <- randomForest(y ~ . ,data = total, importance = TRUE)
+summary(log_random)
+importance(log_random)
+varImpPlot(log_random)
+sum((total$y - log_random$predicted)^2)
 
-summary(lasso.caret)
+
+set.seed(0)
+rf.boston = randomForest(medv ~ ., data = Boston, subset = train, importance = TRUE)
+rf.boston
 
 
 
 
 
 
-#insignificant variables: life_sq (0.555) and kitch_sq (0.0525)
+
+
 
 
 
