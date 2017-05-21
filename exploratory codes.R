@@ -2,13 +2,25 @@ setwd("/Users/jasonchiu0803/Desktop/data_bootcamp/Porject 3")
 library(data.table)
 library(dplyr)
 library(Hmisc)
-#install.packages("Hmisc")
+#install.packages("Hmisc")'
 data <- fread("train.csv",stringsAsFactors = TRUE)
+macro <- fread("macro.csv",stringsAsFactors = TRUE)
 dim(data)
 View(data)
 str(data)
 summary(data)
 
+summary(data$kitch_sq)
+hist(data$kitch_sq)
+
+
+
+
+
+summary(data)
+summary(data$full_sq)
+summary(data$num_room)
+M <- data %>% select(sub_area,)
 c_d <- function(x){
   if (class(x) == "integer" | class(x) == "numeric"){
     b = sum(is.na(x))
@@ -16,7 +28,7 @@ c_d <- function(x){
     print (a)
     b.str = as.character(b)
     print (cat("NAs:",b))
-    c = cor(x, data$price_doc,use = "pairwise.complete.obs")
+    c = cor(x, data$price_doc,use = "complete")
     print(c)
     boxplot(x)
   }
@@ -332,6 +344,7 @@ dim(x)
 #creating dependent variable
 y = complete_data$price_doc
 length(y)
+x
 # lasso regression: Long story short, if you let glmnet standardize the 
 # coefficients (by relying on the default standardize = TRUE), 
 # glmnet performs standardization behind the scenes and reports everything,
@@ -360,4 +373,88 @@ log(bestlambda.lasso)
 lasso.models = glmnet(x, y, alpha = 1, lambda = bestlambda.lasso)
 a <- coef(lasso.models)
 a
+
+?glmnet
+dim(x[train,])
+length(y[train])
+#install.packages("caret")
+library(caret)
+set.seed(0)
+train_control = trainControl(method= "cv", number = 10)
+grid = 10^seq(5, -2, length = 100)
+tune.grid = expand.grid(lambda = grid, alpha = c(0))
+ridge.caret = train(x[train,], y[train],
+                    method = "glmnet",
+                    trControl = train_control, tuneGrid = tune.grid)
+
+plot(ridge.caret, xTrans=log)
+pred = predict.train(ridge.caret, newdata = x[test,])
+
+#install.packages("DT")
+#install.packages("tidyverse")
+library(DT)
+library(tidyverse)
+sum(is.na(data$full_sq))
+data$full_sq
+summary(data$full_sq)
+miss_pct <- map_dbl(data, function(x) { round((sum(is.na(x)) / length(x)) * 100, 1) })
+
+miss_pct <- miss_pct[miss_pct > 0]
+
+data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
+  ggplot(aes(x=reorder(var, -miss), y=miss)) +
+  geom_bar(stat='identity', fill='red') +
+  labs(x='', y='% missing', title='Percent missing data by feature') +
+  theme(axis.text.x=element_text(angle=90, hjust=1))
+
+names(miss_pct)
+
+c_d(data$cafe_sum_1000_max_price_avg)
+#6524 missing
+testing <- data[is.na(data$cafe_sum_1000_max_price_avg),]
+summary(testing$cafe_sum_1000_max_price_avg)
+summary(testing$cafe_sum_1000_min_price_avg)
+# both missing at the same time
+summary(testing$cafe_avg_price_1000)
+#missing avg price as well within 1000 meters
+testing1 <- testing %>% group_by(sub_area) %>% summarise(count=n()) 
+data %>% select(sub_area,cafe_avg_price_1000) %>% group_by(sub_area) %>%
+  summarise(max = max(cafe_avg_price_1000,na.rm=TRUE), 
+            min = min(cafe_avg_price_1000, na.rm=TRUE),
+            mean = mean(cafe_avg_price_1000, na.rm=TRUE))
+M <- data %>% select(cafe_avg_price_1000,
+                     cafe_sum_1000_max_price_avg,
+                     cafe_sum_1000_min_price_avg)
+
+cor(M,use="complete")
+
+
+miss_pct <- map_dbl(macro, function(x) { round((sum(is.na(x)) / length(x)) * 100, 1) })
+
+miss_pct <- miss_pct[miss_pct > 0]
+
+data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
+  ggplot(aes(x=reorder(var, -miss), y=miss)) +
+  geom_bar(stat='identity', fill='red') +
+  labs(x='', y='% missing', title='Percent missing data by feature') +
+  theme(axis.text.x=element_text(angle=90, hjust=1))
+
+dim(macro)
+
+library(lubridate)
+names(macro)
+macro %>% mutate(year())
+
+sort(miss_pct)
+names(miss_pct)
+summary(data$full_sq)
+dim(data)
+plot(miss_pct)
+
+
+
+
+#random forest
+library(randomForest)
+random_init <- randomForest(price_doc ~., data = complete_data, ,importance = TRUE)
 
