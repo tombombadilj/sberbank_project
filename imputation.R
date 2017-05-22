@@ -2,6 +2,9 @@ library(dplyr)
 library(data.table)
 setwd("/Users/jasonchiu0803/Desktop/data_bootcamp/sberbank_project")
 train <- fread("./train.csv",stringsAsFactors = TRUE)
+test <- fread("./test.csv",stringsAsFactors = TRUE)
+
+summary(test)
 
 # cleaning data
 # train year
@@ -105,6 +108,32 @@ data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
   labs(x='', y='% missing', title='Percent missing data by feature') +
   theme(axis.text.x=element_text(angle=90, hjust=1))
 
+dim(train)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+train <- train[c(-22786, -27794, -19096, -11086, -28327, -27461, -18338,
+                 -12112, -16100, -17390, -13867, -24021, -26477, -17530, 
+                 -25184, -22779, -24857, -26178, -28562, -11417, -16872,
+                 -13242, -23603, -22695, -16989, -28199, -28392, -17490,
+                 -19020, -15201, -18180, -21635, -17711, -15886, -17518,
+                 -29657, -25655, -29976, -17139, -20220, -27960, -25420,
+                 -29079, -20273, -12863, -28386, -19514, -22074, -16842,
+                 -9738,  -11284, -27702, -26310, -26666, -14478, -24381,
+                 -14385, -25578, -18813, -14766, -28570, -14831, -25691,
+                 -22024, -12042, -30398, -16193),]
+
 first_set <- train %>% dplyr::select(full_sq,
                               life_sq,
                               floor,
@@ -121,10 +150,15 @@ first_set <- train %>% dplyr::select(full_sq,
          material = factor(material,levels = c(1,2,3,4,5,6))) %>%
   dplyr::select(-price_doc)
 
+
+
 #linear regression
 #install.packages("VIF")
 #library(VIF)
+summary(first_set_model)
 first_set_model <- na.omit(first_set)
+library()
+first_set_model_new <- createDummyFeatures(first_set_model, cols = "product_type")
 dim(first_set_model)
 model.empty = lm(log_price ~ 1, data = first_set_model)
 model.full = lm(log_price ~ ., data = first_set_model)
@@ -134,17 +168,11 @@ library(MASS) #The Modern Applied Statistics library.
 # variable 
 forwardAIC = step(model.empty, scope, direction = "forward", k = 2)
 summary(forwardAIC)
+predict_forward <- predict(forwardAIC, first_set_model)
+sum((total$y - predict_forward)^2)
+predict(predict_forward, test)
 backwardAIC = step(model.full, scope, direction = "backward", k = 2)
 summary(backwardAIC)
-bothAIC.empty = step(model.empty, scope, direction = "both", k = 2)
-summary(bothAIC.empty)
-bothAIC.full = step(model.full, scope, direction = "both", k = 2)
-summary(bothAIC.full)
-
-AIC(forwardAIC,
-    backwardAIC,
-    bothAIC.empty,
-    bothAIC.full)
 
 #Lasso
 #Need matrices for glmnet() function. Automatically conducts conversions as well
@@ -157,11 +185,11 @@ grid = 10^seq(3, -5, length = 100)
 
 #80 and 20 % train and test
 set.seed(0)
-train = sample(1:nrow(x), 8*nrow(x)/10)
-test = (-train)
-y.test = y[test]
+train_1 = sample(1:nrow(x), 8*nrow(x)/10)
+test_1 = (-train_1)
+y.test = y[test_1]
 
-length(train)/nrow(x)
+length(train_1)/nrow(x)
 length(y.test)/nrow(x)
 
 library(caret)
@@ -173,16 +201,15 @@ set.seed(0)
 train_control = trainControl(method = 'cv', number=10)
 #expand.grid
 tune.grid = expand.grid(lambda = grid, alpha=c(1))
-lasso.caret = train(x[train, ], y[train],
+lasso.caret = train(x[train_1, ], y[train_1],
                     method = 'glmnet',
                     trControl = train_control, tuneGrid = tune.grid)
 plot(lasso.caret, xTrans=log)
 log(lasso.caret$bestTune)
-# -6.30
-
+# -10.58
 
 set.seed(0)
-cv.lasso.out = cv.glmnet(x[train, ], y[train],
+cv.lasso.out = cv.glmnet(x[train_1, ], y[train_1],
                          lambda = grid, alpha = 1, nfolds = 10)
 plot(cv.lasso.out, main = "Lasso Regression\n")
 bestlambda.lasso = cv.lasso.out$lambda.min
@@ -190,28 +217,26 @@ bestlambda.lasso
 log(bestlambda.lasso)
 # -6.12
 
-lasso.models.train = glmnet(x[train, ], y[train], alpha = 1, lambda = bestlambda.lasso)
-lasso.models.train$beta
-predict(lasso.models.train,)
-predict(lasso.models.train,  
+lasso.models.train = glmnet(x[train_1, ], y[train_1], alpha = 1, lambda = bestlambda.lasso)
+lasso.models.train$beta[lasso.models.train$beta>0]
+laso_predict_cv <- predict(lasso.models.train, x)
+sum((total$y - laso_predict_cv)^2)
 
-lasso.models.caret = glmnet(x[train, ], y[train], alpha = 1, lambda = lasso.caret$bestTune)
+lasso.models.caret = glmnet(x[train_1, ], y[train_1], alpha = 1, lambda = lasso.caret$bestTune)
 lasso.models.caret$beta
+laso_predict_caret <- predict(lasso.models.caret,x)
+sum((total$y - laso_predict_caret)^2)
 
 # random Forest
 library(randomForest)
 total <- data.frame(x,y)
 summary(total)
 log_random <- randomForest(y ~ . ,data = total, importance = TRUE)
+log_random
 summary(log_random)
 importance(log_random)
 varImpPlot(log_random)
 sum((total$y - log_random$predicted)^2)
-
-
-set.seed(0)
-rf.boston = randomForest(medv ~ ., data = Boston, subset = train, importance = TRUE)
-rf.boston
 
 
 
