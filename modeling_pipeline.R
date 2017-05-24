@@ -23,51 +23,35 @@ total <- rbind(train,test)
 #miss_pct <- miss_pct[miss_pct > 0]
 
 #data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
-  ggplot(aes(x=reorder(var, -miss), y=miss)) +
-  geom_bar(stat='identity', fill='red') +
-  labs(x='', y='% missing', title='Percent missing data by feature') +
-  theme(axis.text.x=element_text(angle=90, hjust=1))
+#  ggplot(aes(x=reorder(var, -miss), y=miss)) +
+#  geom_bar(stat='identity', fill='red') +
+#  labs(x='', y='% missing', title='Percent missing data by feature') +
+#  theme(axis.text.x=element_text(angle=90, hjust=1))
 
 #unique(total$sub_area)
 
 # verifying that total number of buildings adds up all of them
-total %>% 
-  dplyr::select(build_count_before_1920,
-                sub_area,
-                `build_count_1921-1945`,
-                `build_count_1946-1970`,
-                `build_count_1971-1995`,
-                `build_count_after_1995`,
-                raion_build_count_with_builddate_info) %>% 
-  dplyr::mutate(totalbuilding = build_count_before_1920+
-                  `build_count_1921-1945`+`build_count_1946-1970`+
-                  `build_count_1971-1995`+`build_count_after_1995`) %>%
-  dplyr::filter(sub_area =="Nagatinskij Zaton") %>%
-    dplyr::select(raion_build_count_with_builddate_info, totalbuilding)
+#total %>% 
+#  dplyr::select(build_count_before_1920,
+#                sub_area,
+#                `build_count_1921-1945`,
+#                `build_count_1946-1970`,
+#                `build_count_1971-1995`,
+#                `build_count_after_1995`,
+#                raion_build_count_with_builddate_info) %>% 
+#  dplyr::mutate(totalbuilding = build_count_before_1920+
+#                  `build_count_1921-1945`+`build_count_1946-1970`+
+#                  `build_count_1971-1995`+`build_count_after_1995`) %>%
+#  dplyr::filter(sub_area =="Nagatinskij Zaton") %>%
+#    dplyr::select(raion_build_count_with_builddate_info, totalbuilding)
 
 names(convert)
+
 # build_year information missing all listings in a single raion
 total_region <- left_join(total,convert, by="sub_area")
 
 total_region[is.na(total_region$raion_build_count_with_builddate_info),] %>%
   group_by(sub_area) %>% summarise(count=n())
-
-convert %>% dplyr::filter(sub_area == "Poselenie Desjonovskoe" |
-                   sub_area == "Poselenie Filimonkovskoe" |
-                   sub_area == "Poselenie Kievskij" |
-                   sub_area == "Poselenie Klenovskoe" |
-                   sub_area == "Poselenie Krasnopahorskoe" |
-                   sub_area == "Poselenie Mihajlovo-Jarcevskoe" |
-                   sub_area == "Poselenie Mosrentgen" |
-                   sub_area == "Poselenie Novofedorovskoe" |
-                   sub_area == "Poselenie Rjazanovskoe" |
-                   sub_area == "Poselenie Rogovskoe" |
-                   sub_area == "Poselenie Shhapovskoe" |
-                   sub_area == "Poselenie Sosenskoe" |
-                   sub_area == "Poselenie Vnukovskoe" |
-                   sub_area == "Poselenie Voronovskoe" |
-                   sub_area == "Poselenie Voskresenskoe")
-convert[convert$sub_area]
 
 total_sub_area_bild_count <- total_region %>% 
   dplyr::select(sub_area, OKRUG,
@@ -92,7 +76,6 @@ total_sub_area_bild_count <- total_region %>%
                 ratio_1971_1995 = total_1971_1995/total_build,
                 ratio_after_1995 = total_after_1995/total_build)
 View(total_sub_area_bild_count)
-names(total_region)
 
 # all of them are missing in the entire region...so cannot input based on that
 # impute based on a combination of western and south-western regions closes 
@@ -124,12 +107,34 @@ final_build_count <- total_sub_area_bild_count %>% dplyr::select(OKRUG,
                                      ratio_1971_1995,
                                      ratio_after_1995)
 
+final_build_count <- final_build_count %>% dplyr::select(OKRUG,
+                                    ratio_1920_ok = ratio_before_1920,
+                                    ratio_1921_ok = ratio_1921_1945,
+                                    ratio_1946_ok = ratio_1946_1970,
+                                    ratio_1971_ok = ratio_1971_1995,
+                                    ratio_1995_ok = ratio_after_1995)
+
 # adding in ratio of building age
 total <- left_join(total, convert, by = "sub_area")
-names(total)
-names(final_build_count)
 total <- left_join(total, final_build_count, by = "OKRUG")
+total <- total %>% dplyr::mutate(ratio_1920 = build_count_before_1920/raion_build_count_with_builddate_info,
+                          ratio_1921 = `build_count_1921-1945`/raion_build_count_with_builddate_info,
+                          ratio_1946 = `build_count_1946-1970`/raion_build_count_with_builddate_info,
+                          ratio_1971 = `build_count_1971-1995`/raion_build_count_with_builddate_info,
+                          ratio_1995 = build_count_after_1995/raion_build_count_with_builddate_info)
 
+total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1920 <- total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1920_ok
+total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1921 <- total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1921_ok
+total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1946 <- total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1946_ok
+total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1971 <- total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1971_ok
+total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1995 <- total[which(is.na(total$raion_build_count_with_builddate_info)),]$ratio_1995_ok
+
+total <- total %>% dplyr::select(-ratio_1920_ok,
+                          -ratio_1921_ok,
+                          -ratio_1946_ok,
+                          -ratio_1971_ok,
+                          -ratio_1995_ok)
+names(total)
 #buliding 
 material_index <- total %>% dplyr::select(sub_area,OKRUG,
                  raion_build_count_with_material_info,
@@ -164,6 +169,7 @@ material_index <- total %>% dplyr::select(sub_area,OKRUG,
          ratio_mix = total_mix/total_build) %>%
   dplyr::select(OKRUG,
                 total_build,
+                ratio_block,
                 ratio_wood,
                 ratio_frame,
                 ratio_brick,
@@ -173,6 +179,10 @@ material_index <- total %>% dplyr::select(sub_area,OKRUG,
                 ratio_slag,
                 ratio_mix)
 View(material_index)
+#ratio_block
+material_index[6,]$ratio_block = (1489829*0.0949+1591137*0.176)/(1489829+1591137)
+material_index[10,]$ratio_block = (1489829*0.0949+1591137*0.176)/(1489829+1591137)
+
 #ratio_wood
 material_index[6,]$ratio_wood = (1489829*0.283+1591137*0.218)/(1489829+1591137)
 material_index[10,]$ratio_wood = (1489829*0.283+1591137*0.218)/(1489829+1591137)
@@ -202,13 +212,52 @@ material_index[6,]$ratio_slag = (1489829*0.0179+1591137*0.0306)/(1489829+1591137
 material_index[10,]$ratio_slag = (1489829*0.0179+1591137*0.0306)/(1489829+1591137)
 
 #ratio_mix
-material_index[6,]$ratio_slag = (1489829*0.00395+1591137*0.00179)/(1489829+1591137)
-material_index[10,]$ratio_slag = (1489829*0.00395+1591137*0.00179)/(1489829+1591137)
+material_index[6,]$ratio_mix = (1489829*0.00395+1591137*0.00179)/(1489829+1591137)
+material_index[10,]$ratio_mix = (1489829*0.00395+1591137*0.00179)/(1489829+1591137)
 
 #
-material_index <- material_index %>% dplyr::select(-total_build)
+material_index <- material_index %>% dplyr::select(-total_build,
+                                                   ratio_block_ok = ratio_block,
+                                                   ratio_wood_ok = ratio_wood,
+                                                   ratio_frame_ok = ratio_frame,
+                                                   ratio_brick_ok = ratio_brick,
+                                                   ratio_monolith_ok = ratio_monolith,
+                                                   ratio_panel_ok = ratio_panel,
+                                                   ratio_foam_ok = ratio_foam,
+                                                   ratio_slag_ok = ratio_slag,
+                                                   ratio_mix_ok = ratio_mix)
+
 total <- left_join(total,material_index, by = "OKRUG")
-names(total)
+
+total <- total %>% dplyr::mutate(ratio_block = build_count_block/raion_build_count_with_material_info,
+                                 ratio_wood = build_count_wood/raion_build_count_with_material_info,
+                                 ratio_frame = build_count_frame/raion_build_count_with_material_info,
+                                 ratio_brick = build_count_brick/raion_build_count_with_material_info,
+                                 ratio_monolith = build_count_monolith/raion_build_count_with_material_info,
+                                 ratio_panel = build_count_panel/raion_build_count_with_material_info,
+                                 ratio_foam = build_count_foam/raion_build_count_with_material_info,
+                                 ratio_slag = build_count_slag/raion_build_count_with_material_info,
+                                 ratio_mix = build_count_mix/raion_build_count_with_material_info)
+
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_block <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_block_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_wood <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_wood_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_frame <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_frame_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_brick <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_brick_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_monolith <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_monolith_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_panel <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_panel_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_foam <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_foam_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_slag <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_slag_ok
+total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_mix <- total[which(is.na(total$raion_build_count_with_material_info)),]$ratio_mix_ok
+
+total <- total %>% dplyr::select(-ratio_block_ok,
+                                 -ratio_wood_ok,
+                                 -ratio_frame_ok,
+                                 -ratio_brick_ok,
+                                 -ratio_monolith_ok,
+                                 -ratio_panel_ok,
+                                 -ratio_foam_ok,
+                                 -ratio_slag_ok,
+                                 -ratio_mix_ok)
 
 #clean up for build_year, full_sq, and state
 summary(total$full_sq)
@@ -242,8 +291,6 @@ na.index <- which(is.na(total$full_sq))
 total[na.index,"full_sq"] <- total3[na.index,"mean_sub"]
 hist(total$full_sq)
 summary(total$full_sq)
-
-
 
 #clean up for build_year
 summary(total$build_year)
