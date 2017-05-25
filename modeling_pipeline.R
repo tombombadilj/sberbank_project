@@ -374,8 +374,8 @@ city_dist <- total_full %>%
                 railroad_station_avto_min,
                 railroad_station_walk_km)
 
-View(city_dist)
-View(cor(city_dist))
+#View(city_dist)
+#View(cor(city_dist))
 #feature engineering railroad and metro
 
 fa.parallel(city_dist, #The data in question.
@@ -403,9 +403,16 @@ total_full <- total_full %>% mutate(dis_metro_rail = PC1, dis_rail = PC2)
 # distance score
 # kremlin_km*5 + bulvar_ring_km*4 + sadovoe_km*3 + ttk_km*2 + mkmd_km*1
 # did not significantly improve the model - retire feature
-total_full <- total_full %>% 
-  dplyr::mutate(distance_score = kremlin_km*5 + bulvar_ring_km*4 + sadovoe_km*3 +
-                  ttk_km*2 + mkad_km*1)
+total_distance <- total_full %>% 
+  dplyr::select(kremlin_km,
+                bulvar_ring_km,
+                sadovoe_km,
+                ttk_km,
+                mkad_km)
+cor(total_distance)
+# 2 variables can be added kremlin distance and mkad_km - variable removed 
+# because it was not very helpful
+
 
 
 train_1 <- total_full%>% dplyr::filter(part==1) %>%
@@ -421,8 +428,7 @@ train_1 <- total_full%>% dplyr::filter(part==1) %>%
                 sub_area,
                 product_type,
                 dis_rail,
-                dis_metro_rail,
-                distance_score)
+                dis_metro_rail)
 
 train_1$log_price <- log(train$price_doc)
 train_1 <- train_1 %>% dplyr::select(-price_doc)
@@ -439,8 +445,7 @@ test_1 <- total_full%>% dplyr::filter(part==2) %>%
                 sub_area,
                 product_type,
                 dis_rail,
-                dis_metro_rail,
-                distance_score)
+                dis_metro_rail)
 
 correlation_check <- train_1 %>% dplyr::select(-state,
                                                -material,
