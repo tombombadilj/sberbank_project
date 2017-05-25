@@ -10,6 +10,12 @@ macro <- fread("./macro.csv",stringsAsFactors = TRUE)
 convert <- fread("./name_list.csv", stringsAsFactors = TRUE)
 dim(test)
 
+unique(test$product_type)
+
+View(macro)
+
+names(macro)
+
 summary(test$floor)
 
 test$price_doc <- NA
@@ -18,34 +24,34 @@ train$source <- "train"
 
 total <- rbind(train,test)
 
-#miss_pct <- map_dbl(total, function(x) { round((sum(is.na(x)) / length(x)) * 100, 1) })
+miss_pct <- map_dbl(total, function(x) { round((sum(is.na(x)) / length(x)) * 100, 1) })
 
-#miss_pct <- miss_pct[miss_pct > 0]
+miss_pct <- miss_pct[miss_pct > 0]
 
-#data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
-#  ggplot(aes(x=reorder(var, -miss), y=miss)) +
-#  geom_bar(stat='identity', fill='red') +
-#  labs(x='', y='% missing', title='Percent missing data by feature') +
-#  theme(axis.text.x=element_text(angle=90, hjust=1))
+data.frame(miss=miss_pct, var=names(miss_pct), row.names=NULL) %>%
+  ggplot(aes(x=reorder(var, -miss), y=miss)) +
+  geom_bar(stat='identity', fill='red') +
+  labs(x='', y='% missing', title='Percent missing data by feature') +
+  theme(axis.text.x=element_text(angle=90, hjust=1))
 
 #unique(total$sub_area)
 
 # verifying that total number of buildings adds up all of them
-#total %>% 
-#  dplyr::select(build_count_before_1920,
-#                sub_area,
-#                `build_count_1921-1945`,
-#                `build_count_1946-1970`,
-#                `build_count_1971-1995`,
-#                `build_count_after_1995`,
-#                raion_build_count_with_builddate_info) %>% 
-#  dplyr::mutate(totalbuilding = build_count_before_1920+
-#                  `build_count_1921-1945`+`build_count_1946-1970`+
-#                  `build_count_1971-1995`+`build_count_after_1995`) %>%
-#  dplyr::filter(sub_area =="Nagatinskij Zaton") %>%
-#    dplyr::select(raion_build_count_with_builddate_info, totalbuilding)
+total %>% 
+  dplyr::select(build_count_before_1920,
+                sub_area,
+                `build_count_1921-1945`,
+                `build_count_1946-1970`,
+                `build_count_1971-1995`,
+                `build_count_after_1995`,
+                raion_build_count_with_builddate_info) %>% 
+  dplyr::mutate(totalbuilding = build_count_before_1920+
+                  `build_count_1921-1945`+`build_count_1946-1970`+
+                  `build_count_1971-1995`+`build_count_after_1995`) %>%
+  dplyr::filter(sub_area =="Nagatinskij Zaton") %>%
+    dplyr::select(raion_build_count_with_builddate_info, totalbuilding)
 
-names(convert)
+#names(convert)
 
 # build_year information missing all listings in a single raion
 total_region <- left_join(total,convert, by="sub_area")
@@ -135,7 +141,7 @@ total <- total %>% dplyr::select(-ratio_1920_ok,
                           -ratio_1971_ok,
                           -ratio_1995_ok)
 names(total)
-#buliding 
+buliding 
 material_index <- total %>% dplyr::select(sub_area,OKRUG,
                  raion_build_count_with_material_info,
                  build_count_block,
@@ -346,7 +352,63 @@ total$material <- factor(total$material)
 summary(total$state)
 summary(total$material)
 
-train_1 <- total%>% dplyr::filter(source=="train") %>%
+#loading in final total dataset
+total_full <- fread("total.csv",stringsAsFactors = TRUE)
+total_full$state <- factor(total_full$state, levels = c(1,2,3,4))
+total_full$material <- factor(total_full$material)
+total_full[which(is.na(total_full$material)),]$material <- Mode(total_full$material)
+total_full %>% group_by(product_type) %>% summarise(n())
+total_full[which(total_full$product_type==""),]$product_type<-"Investment"
+str(total_full$product_type)
+total_full$sub_area <- factor(total_full$sub_area)
+total_full$product_type  <- factor(total_full$product_type)
+
+names(total_full)
+
+# to moscow ring distances
+city_dist <- total_full %>% 
+  dplyr::select(metro_min_avto,
+                metro_km_avto,
+                metro_km_walk,
+                railroad_station_avto_km,
+                railroad_station_avto_min,
+                railroad_station_walk_km)
+
+View(city_dist)
+View(cor(city_dist))
+#feature engineering railroad and metro
+
+fa.parallel(city_dist, #The data in question.
+            fa = "pc", #Display the eigenvalues for PCA.
+            n.iter = 100) #Number of simulated analyses to perform.
+abline(h = 1) #Adding a horizontal line at 1.
+#Should extract 1 PC, but let's look at 3.
+
+distance_pointer = principal(city_dist, #The data in question.
+                       nfactors = 2,
+                       rotate = "none") #The number of PCs to extract.
+distance_pointer
+
+factor.plot(distance_pointer) #Add variable names to the plot.
+
+#-PC1 ends up being a weighted average.
+#-PC2 contrasts one side of the rod with the other.
+
+plot(distance_pointer)
+PC1 <- distance_pointer$scores[,1]
+PC2 <- distance_pointer$scores[,2]
+total_full <- total_full %>% mutate(dis_metro_rail = PC1, dis_rail = PC2)
+
+# distance to city center
+# distance score
+# kremlin_km*5 + bulvar_ring_km*4 + sadovoe_km*3 + ttk_km*2 + mkmd_km*1
+# did not significantly improve the model - retire feature
+total_full <- total_full %>% 
+  dplyr::mutate(distance_score = kremlin_km*5 + bulvar_ring_km*4 + sadovoe_km*3 +
+                  ttk_km*2 + mkad_km*1)
+
+
+train_1 <- total_full%>% dplyr::filter(part==1) %>%
   dplyr::select(price_doc,
                 full_sq,
                 build_year,
@@ -357,13 +419,15 @@ train_1 <- total%>% dplyr::filter(source=="train") %>%
                 floor,
                 num_room,
                 sub_area,
-                product_type) %>% 
+                product_type,
+                dis_rail,
+                dis_metro_rail,
+                distance_score)
 
-train_1
 train_1$log_price <- log(train$price_doc)
 train_1 <- train_1 %>% dplyr::select(-price_doc)
 
-test_1 <- total%>% dplyr::filter(source=="test") %>%
+test_1 <- total_full%>% dplyr::filter(part==2) %>%
   dplyr::select(full_sq,
                 build_year,
                 state,
@@ -373,29 +437,54 @@ test_1 <- total%>% dplyr::filter(source=="test") %>%
                 floor,
                 num_room,
                 sub_area,
-                product_type)
+                product_type,
+                dis_rail,
+                dis_metro_rail,
+                distance_score)
 
+correlation_check <- train_1 %>% dplyr::select(-state,
+                                               -material,
+                                               -sub_area,
+                                               -product_type)
+corre <- cor(correlation_check)
+library(corrplot)
+corrplot(corre)
+corre
+
+# Forward Regression
 model.empty = lm(log_price ~ 1, data = train_1)
 model.full = lm(log_price ~ ., data = train_1)
 scope = list(lower = formula(model.empty), upper = formula(model.full))
-library(MASS) #The Modern Applied Statistics library.
+# library(MASS) #The Modern Applied Statistics library.
 
 # forward AIC
 forwardAIC = step(model.empty, scope, direction = "forward", k = 2)
 summary(forwardAIC)
+AIC(forwardAIC)
+# R2 = 0.3808
+# AIC: 41361.56
+train_predict <- predict(forwardAIC, train_1)
+sum((train_predict - train_1$log_price)^2)
+#6862.91
 test_predict <- predict(forwardAIC, test_1)
 test_origin <- exp(test_predict)
-total %>% filter(source=="test") %>% dplyr::select(id)
+test_2<-total_full %>% dplyr::filter(part == 2) %>% dplyr::select(id)
 
-test_2 <- total%>% dplyr::filter(source=="test") %>%
-  dplyr::select(id)
+#create a submission file
+submission <- data.frame(id=test_2$id, price_doc = test_origin)
 
+View(submission)
 
+write.csv(x = submission,"./submission5.24.17.csv",row.names = FALSE)
+
+dim(submission)
 
 # Lasso
 x = model.matrix(log_price ~ ., train_1)[, -1] #Dropping the intercept column.
 dim(x)
 y = train_1$log_price
+x_test = model.matrix(~.,test_1)[,-1]
+dim(x_test)
 
 grid = 10^seq(3, -5, length = 100)
 
@@ -416,26 +505,18 @@ bestlambda.lasso = cv.lasso.out$lambda.min
 bestlambda.lasso
 log(bestlambda.lasso)
 
-lasso.models.train = glmnet(x[train_1, ], y[train_1], alpha = 1, lambda = bestlambda.lasso)
-lasso.models.train$beta[lasso.models.train$beta>0]
-laso_predict_cv <- predict(lasso.models.train, x)
+lasso.models.train = glmnet(x[train_index, ], y[train_index], alpha = 1, lambda = bestlambda.lasso)
+lasso.models.train$beta
+summary(lasso.models.train)
+laso_predict_train <- predict(lasso.models.train, x)
+sum((laso_predict_train - train_1$log_price)^2)
 
+laso_predict_cv <- predict(lasso.models.train, x_test)
+laso_predict_origin <- exp(laso_predict_cv)
 
-
-# random Forest
-library(randomForest)
-log_random <- randomForest(log_price ~ . ,data = train_1, importance = TRUE)
-log_random
-summary(log_random)
-importance(log_random)
-varImpPlot(log_random)
-
-
-# Creating a new submission file
-submission <- data.frame(id=test_2$id, price_doc = test_origin)
+#creating a submission file
+submission_lasso <- data.frame(id=test_2$id, price_doc = laso_predict_origin)
 
 View(submission)
 
-write.csv(x = submission,"./submission.csv",row.names = FALSE)
-
-dim(submission)
+write.csv(x = submission,"./submission5.24.17_lasso.csv",row.names = FALSE)

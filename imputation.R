@@ -168,8 +168,7 @@ library(MASS) #The Modern Applied Statistics library.
 # variable 
 forwardAIC = step(model.empty, scope, direction = "forward", k = 2)
 summary(forwardAIC)
-predict_forward <- predict(forwardAIC, first_set_model)
-sum((total$y - predict_forward)^2)
+
 predict(predict_forward, test)
 backwardAIC = step(model.full, scope, direction = "backward", k = 2)
 summary(backwardAIC)
